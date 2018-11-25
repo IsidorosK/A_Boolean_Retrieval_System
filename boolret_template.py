@@ -5,7 +5,7 @@
 # Author: KOUTSOUMPOS ISIDOROS
 #########################################################################
 
-import sys
+
 from nltk.stem.porter import PorterStemmer
 from nltk.corpus import stopwords
 import re,json,os
@@ -26,8 +26,8 @@ def parse_documents(cran_file=CRAN_COLL):
     """
     document = open(cran_file,'r')
     lines = document.readlines()
-    docDict = {}
-    titleDict = {}
+    doc_dict = {}
+    title_dict = {}
 
     global id
     for i in range(0,len(lines)):
@@ -35,15 +35,15 @@ def parse_documents(cran_file=CRAN_COLL):
             linesplit = lines[i].split()
             id = int(linesplit[1])
 
-        titlesList = []
+        titles_list = []
         if lines[i].startswith('.T') :
             while not lines[i+1].startswith('.A'):
                 linesplit = lines[i+1].split('\n')
                 titles = linesplit[0]
-                titlesList.append(titles)
-                titleDict[id] = titlesList
+                titles_list.append(titles)
+                title_dict[id] = titles_list
                 i+=1
-        del titlesList
+        del titles_list
 
         if lines[i].startswith('.A'):
             linesplit = lines[i+1].split('\n')
@@ -70,12 +70,12 @@ def parse_documents(cran_file=CRAN_COLL):
                         x = lines[i+1].split('\n')
                         lista.append(x[0].rstrip())
                         i+=1
-                        docDict[id] = lista
+                        doc_dict[id] = lista
                     del lista
                 except IndexError:
                     pass
     document.close()
-    return docDict,titleDict
+    return doc_dict,title_dict
 
 def pre_process(words):
     """Preprocess the list of words provided.
@@ -85,23 +85,21 @@ def pre_process(words):
         a shorter list of pre-processed words
     """
     # Get list of stop-words and instantiate a stemmer:
+    print "Will do the pre_process of words now.."
     stop_words = set(stopwords.words('english'))
     stemmer = PorterStemmer()
-    finalList = []
-    otherList = []
+    final_list = []
+
     for i in words:
-        stringsSplittedList = i.split()
+        strings_splitted_list = i.split()
         proxeirhlista = []
 
-        for string in (stringsSplittedList):
-            #### Remove symbols
-            removeSymbols = re.sub('([^A-Za-z0-9])+|(\d)|\s+', ' ', string,flags=re.UNICODE)
-            #removeSymbols = re.sub('([^A-Za-z0-9]+)|(\d)|{\s+}', ' ', string)
-            removeSymbols = " ".join(re.split("\s+", removeSymbols, flags=re.UNICODE))
-            removeSymbols.strip()
+        for string in strings_splitted_list:
+            #### Remove symbolsw
+            remove_symbols = re.sub(r'(\W)|[!@#$%^&*()[]{};\':",.<>/?`~-_=+]',' ',string,flags=re.UNICODE)
 
-            proxeirhlista.append(removeSymbols)
-
+            remove_symbols.strip()
+            proxeirhlista.append(remove_symbols)
         ##Remove words under 3 characters
         words = [x for x in proxeirhlista if len(x) > 3]
 
@@ -109,39 +107,12 @@ def pre_process(words):
             if i in stop_words:
                 pass
             else:
-                wordToBeAdded = stemmer.stem(i)
-                finalList.append(wordToBeAdded.encode('ascii','ignore'))
+                word_to_be_added = stemmer.stem(i)
+                final_list.append(word_to_be_added.encode('ascii','ignore'))
+    #print final_list
+    return final_list
 
-    return finalList
-
-def searchForOtherOccurencies(strings,titles):
-    # print strings
-    df = 0
-    pointerlist = {}
-    invertedIndex = {}
-    for key in titles:
-        tf = 0
-        for word in titles[key]:
-            if word == strings:
-                df += 1
-                tf += 1
-                pointerlist[key] = tf
-            invertedIndex[strings] = pointerlist
-
-    doc = open('myInvertedIndex.txt').read()
-
-    if strings in doc:
-        print "Yes there is a string"
-    else:
-        with open('myInvertedIndex.txt',"a") as myfile:
-            print "New word added to invertedIndex"
-            myfile.write(json.dumps(invertedIndex))
-            myfile.write('\n')
-            myfile.close()
-
-
-
-def create_inv_index(bodies, titles):
+def create_inverted_index(bodies, titles):
     """Create a single inverted index for the dictionaries provided. Treat
     all keywords as if they come from the same field. In the inverted index
     retail document and term frequencies per the form below.
@@ -158,14 +129,29 @@ def create_inv_index(bodies, titles):
                term    df  docid    tf
     """
     # Create a joint dictionary with pre-processed terms
+    print "Creating inverted index...."
+    dict_inv = {}
+    for docId in bodies:
+        for string in bodies[docId]:
+            if string in dict_inv:
+                dict_inv[string][0] += 1
+                if docId in dict_inv[string][1]:
+                    dict_inv[string][1][docId] += 1
+                else:
+                    dict_inv[string][1][docId] = 1
+            else:
+                dict_inv[string] = [1,{docId:1}]
+        for string in titles[docId]:
+            if string in dict_inv:
+                dict_inv[string][0] += 1
+                if docId in dict_inv[string][1]:
+                    dict_inv[string][1][docId] += 1
+                else:
+                    dict_inv[string][1][docId] = 1
+            else:
+                dict_inv[string] = [1,{docId:1}]
 
-    for i in titles:
-        for string in titles[i]:
-            searchForOtherOccurencies(string,titles)
-    for key in bodies:
-        for string in bodies[key]:
-            searchForOtherOccurencies(string,bodies)
-
+    return dict_inv
 
 
 def load_inv_index(filename=INDEX_FILE):
@@ -178,7 +164,20 @@ def load_inv_index(filename=INDEX_FILE):
     Return:
         a dictionary containing all keyworks and their posting dictionaries
     """
-
+    try:
+        inv_index = open(filename).readlines()
+    except IOError:
+        print "Will create now the inverted index."
+        parsed = parse_documents()
+        titles = {}
+        bodies = {}
+        for key in parsed[1]:
+            titles[key] = pre_process(parsed[1][key])
+        for key in parsed[0]:
+            bodies[key] = pre_process(parsed[0][key])
+        inv_index = create_inverted_index(bodies, titles)
+        write_inv_index(inv_index,INDEX_FILE)
+    return inv_index
 
 def write_inv_index(inv_index, outfile=INDEX_FILE):
     """Write the given inverted index in a file.
@@ -186,6 +185,11 @@ def write_inv_index(inv_index, outfile=INDEX_FILE):
         inv_index: an inverted index of the form {'term': [df, {doc_id: tf}]}
         outfile: (str) the path to the file to be created
     """
+    with open(outfile,'w') as myfile:
+        print "New word added to inverted index"
+        #myfile.write(inv_index)
+        myfile.write(json.dumps(inv_index))
+        myfile.close()
 
 
 def eval_conj(inv_index, terms):
@@ -218,6 +222,33 @@ def eval_disj(conj_results):
         it with None
     """
     # Basic boolean - no scores, max(tf.idf) for ranked retrieval:
+def call_AND(inv_index, list_of_ANDs):
+    inv = inv_index
+    id_list = []
+    list_of_ANDs_splitted = list_of_ANDs.split(' ')
+    pre_processed_strings = pre_process(list_of_ANDs_splitted)
+
+    for string in pre_processed_strings:
+        if string in inv:
+            id_list.append(list(inv[string][1].keys()))
+    new_id_list = []
+    and_list = []
+    for sublists in id_list:
+        for doc_id in sublists:
+            if doc_id not in new_id_list:
+                new_id_list.append(doc_id)
+            else:
+                and_list.append(doc_id)
+
+    return new_id_list,and_list
+
+def call_OR(and_results):
+    or_list = []
+    for elements in and_results:
+        for ids in elements:
+            if ids not in or_list:
+                or_list.append(ids)
+    return or_list
 
 
 def main():
@@ -239,15 +270,24 @@ def main():
     # (documents with higher scores should appear before documents with lower
     # scores):
 
-    parsed = parse_documents()
-    titles = {}
-    bodies = {}
-    for key in parsed[1]:
-        titles[key] = pre_process(parsed[1][key])
-    for key in parsed[0]:
-        bodies[key] = pre_process(parsed[0][key])
+    inv_index = load_inv_index()
+    inv = json.loads(inv_index[0])
 
-    #create_inv_index(bodies,titles)
+    line = raw_input("Give input or leave it blank and enter to terminate: ")
+
+    x = line.split('\\n')
+    and_results = []
+    new_id_list = []
+    for sublist in x:
+        results = call_AND(inv, sublist)
+
+        new_id_list.append(results[0])
+        and_results.append(results[1])
+
+    or_results = call_OR(new_id_list)
+    print "AND results:",and_results
+    print "OR results:",or_results
+
 
 if __name__ == '__main__':
     main()
