@@ -166,6 +166,7 @@ def load_inv_index(filename=INDEX_FILE):
     """
     try:
         inv_index = open(filename).readlines()
+        inv_index = json.loads(inv_index[0])
     except IOError:
         print "Will create now the inverted index."
         parsed = parse_documents()
@@ -221,7 +222,8 @@ def eval_disj(conj_results):
         a set of (docId, score) tuples - You can ignore `score` by substituting
         it with None
     """
-    # Basic boolean - no scores, max(tf.idf) for ranked retrieval:
+    # Basic boolean - no scores, max(tf.idf) for ranked retrieval:\
+
 def call_AND(inv_index, list_of_ANDs):
     inv = inv_index
     id_list = []
@@ -271,15 +273,14 @@ def main():
     # scores):
 
     inv_index = load_inv_index()
-    inv = json.loads(inv_index[0])
-
-    line = raw_input("Give input or leave it blank and enter to terminate: ")
+    # inv = json.loads(inv_index[0])
+    line = raw_input("Give input: ")
 
     x = line.split('\\n')
     and_results = []
     new_id_list = []
     for sublist in x:
-        results = call_AND(inv, sublist)
+        results = call_AND(inv_index, sublist)
 
         new_id_list.append(results[0])
         and_results.append(results[1])
